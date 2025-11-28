@@ -1,306 +1,411 @@
 {% extends "layout.html" %}
 {% block content %}
 
-<h2>Evidence details</h2>
+<style>
+  .section-title {
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    color: #6c757d;
+  }
+  .card-shadow {
+    border: 0;
+    box-shadow: 0 0.25rem 0.5rem rgba(0,0,0,.05);
+  }
+  .kv-list {
+    padding-left: 0;
+    margin-bottom: 0;
+    list-style: none;
+  }
+  .kv-list li + li {
+    margin-top: .25rem;
+  }
+  .vol-table {
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .vol-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 1;
+  }
+  .scroll-x {
+    overflow-x: auto;
+  }
+  pre {
+    background: #0f172a;
+    color: #e5e7eb;
+    padding: .75rem 1rem;
+    border-radius: .4rem;
+    font-size: 0.8rem;
+  }
+</style>
 
-<h3>Automatic verdict</h3>
-{% if evidence.verdict %}
-  <p>
-    <strong>Status:</strong>
-    <span class="
-      {% if evidence.verdict.label == 'malicious' %}
-        text-danger
-      {% elif evidence.verdict.label == 'benign' %}
-        text-success
-      {% else %}
-        text-warning
-      {% endif %}
-    ">
-      {{ evidence.verdict.label }}
-    </span>
-    (score {{ evidence.verdict.score }})
-  </p>
+<div class="container-fluid py-3">
 
-  {% if evidence.verdict.reasons %}
-    <ul>
-      {% for r in evidence.verdict.reasons %}
-        <li>{{ r }}</li>
-      {% endfor %}
-    </ul>
-  {% endif %}
-{% else %}
-  <p class="text-muted">No automatic verdict computed.</p>
-{% endif %}
-
-<div class="row g-3">
-
-  <!-- Overview -->
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">Overview</div>
-      <div class="card-body">
-        <p><strong>Bucket:</strong> {{ evidence.bucket }}</p>
-        <p><strong>Object:</strong> {{ evidence.object_name }}</p>
-        <p><strong>Kind:</strong> {{ evidence.kind or 'n/a' }}</p>
-        <p><strong>MIME:</strong> {{ evidence.mime_type }}</p>
-        <p><strong>Size:</strong> {{ evidence.size_bytes }} bytes
-          {% if evidence.size_mb is defined %} ({{ evidence.size_mb }} MB){% endif %}
-        </p>
-        <p><strong>Created at:</strong> {{ evidence.created_at }}</p>
-        <p><strong>Processed at:</strong> {{ evidence.processed_at }}</p>
-      </div>
+  <!-- Page header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-0">Evidence details</h2>
+      <p class="text-muted mb-0">
+        Bucket <code>{{ evidence.bucket }}</code> ·
+        Object <code>{{ evidence.object_name }}</code>
+      </p>
     </div>
   </div>
 
-  <!-- Hashes -->
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">Hashes</div>
-      <div class="card-body">
-        <ul class="mb-0">
-          <li><strong>MD5:</strong> <code>{{ evidence.md5 or 'n/a' }}</code></li>
-          <li><strong>SHA256:</strong> <code>{{ evidence.sha256 or 'n/a' }}</code></li>
-        </ul>
-      </div>
-    </div>
-  </div>
+  <!-- Verdict + main metadata -->
+  <div class="row g-3 mb-3">
 
-</div>
+    <!-- Automatic verdict -->
+    <div class="col-lg-4">
+      <div class="card card-shadow h-100">
+        <div class="card-header bg-light">
+          <span class="section-title">Automatic verdict</span>
+        </div>
+        <div class="card-body">
+          {% if evidence.verdict %}
+            <p class="mb-2">
+              <strong>Status:</strong>
+              <span class="
+                {% if evidence.verdict.label == 'malicious' %}
+                  badge bg-danger
+                {% elif evidence.verdict.label == 'benign' %}
+                  badge bg-success
+                {% else %}
+                  badge bg-warning text-dark
+                {% endif %}
+              ">
+                {{ evidence.verdict.label }}
+              </span>
+              <span class="ms-1 text-muted">
+                (score {{ evidence.verdict.score }})
+              </span>
+            </p>
 
-<div class="row g-3 mt-1">
-
-  <!-- EXIF -->
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">EXIF / Image metadata</div>
-      <div class="card-body">
-        {% if evidence.exif %}
-          <ul class="mb-0">
-            {% for k, v in evidence.exif.items() %}
-              <li><strong>{{ k }}:</strong> {{ v }}</li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p class="text-muted mb-0">No EXIF metadata (not an image or EXIF empty).</p>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- VirusTotal -->
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-header">VirusTotal</div>
-      <div class="card-body">
-        {% if evidence.vt %}
-          <ul>
-            <li><strong>Malicious:</strong> {{ evidence.vt.malicious or 0 }}</li>
-            <li><strong>Suspicious:</strong> {{ evidence.vt.suspicious or 0 }}</li>
-            <li><strong>Harmless:</strong> {{ evidence.vt.harmless or 0 }}</li>
-            <li><strong>Undetected:</strong> {{ evidence.vt.undetected or 0 }}</li>
-            {% if evidence.vt.vt_link %}
-              <li><a href="{{ evidence.vt.vt_link }}" target="_blank">Open in VirusTotal</a></li>
+            {% if evidence.verdict.reasons %}
+              <p class="mb-1"><strong>Why?</strong></p>
+              <ul class="mb-0">
+                {% for r in evidence.verdict.reasons %}
+                  <li>{{ r }}</li>
+                {% endfor %}
+              </ul>
             {% endif %}
-          </ul>
-        {% else %}
-          <p class="text-muted mb-0">
-            No VirusTotal report (either VT is disabled or hash not found).
-          </p>
-        {% endif %}
+          {% else %}
+            <p class="text-muted mb-0">No automatic verdict computed.</p>
+          {% endif %}
+        </div>
       </div>
     </div>
+
+    <!-- Overview -->
+    <div class="col-lg-4">
+      <div class="card card-shadow h-100">
+        <div class="card-header bg-light">
+          <span class="section-title">Overview</span>
+        </div>
+        <div class="card-body">
+          <ul class="kv-list">
+            <li><strong>Kind:</strong> {{ evidence.kind or 'n/a' }}</li>
+            <li><strong>MIME:</strong> {{ evidence.mime_type }}</li>
+            <li>
+              <strong>Size:</strong> {{ evidence.size_bytes }} bytes
+              {% if evidence.size_mb is defined %}
+                ({{ evidence.size_mb }} MB)
+              {% endif %}
+            </li>
+            <li><strong>Created at:</strong> {{ evidence.created_at }}</li>
+            <li><strong>Processed at:</strong> {{ evidence.processed_at }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hashes -->
+    <div class="col-lg-4">
+      <div class="card card-shadow h-100">
+        <div class="card-header bg-light">
+          <span class="section-title">Hashes</span>
+        </div>
+        <div class="card-body">
+          <ul class="kv-list">
+            <li><strong>MD5:</strong> <code>{{ evidence.md5 or 'n/a' }}</code></li>
+            <li><strong>SHA256:</strong> <code>{{ evidence.sha256 or 'n/a' }}</code></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-</div>
+  <!-- EXIF + VirusTotal -->
+  <div class="row g-3 mb-4">
 
-<h3>Volatility analysis</h3>
-
-{% if evidence.volatility %}
-  <!-- Onglets -->
-  <ul class="nav nav-tabs">
-    <li class="nav-item">
-      <a class="nav-link active" href="#pslist" data-bs-toggle="tab">pslist</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#psscan" data-bs-toggle="tab">psscan</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#netscan" data-bs-toggle="tab">netscan</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#malfind" data-bs-toggle="tab">malfind</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#cmdline" data-bs-toggle="tab">cmdline</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#dlllist" data-bs-toggle="tab">dlllist</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#raw" data-bs-toggle="tab">Raw JSON</a>
-    </li>
-  </ul>
-
-  <!-- Contenu des onglets -->
-  <div class="tab-content mt-3">
-
-    <!-- pslist -->
-    <div class="tab-pane fade show active" id="pslist">
-      <p>Total processes: {{ pslist_rows|length }}</p>
-      <table class="table table-sm table-striped">
-        <thead>
-          <tr>
-            <th>PID</th><th>PPID</th><th>Image</th>
-            <th>Threads</th><th>Handles</th>
-            <th>SessionId</th><th>CreateTime</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in pslist_rows %}
-          <tr>
-            <td>{{ row.PID }}</td>
-            <td>{{ row.PPID }}</td>
-            <td>{{ row.ImageFileName }}</td>
-            <td>{{ row.Threads }}</td>
-            <td>{{ row.Handles }}</td>
-            <td>{{ row.SessionId }}</td>
-            <td>{{ row.CreateTime }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <!-- EXIF -->
+    <div class="col-lg-6">
+      <div class="card card-shadow h-100">
+        <div class="card-header bg-light">
+          <span class="section-title">EXIF / Image metadata</span>
+        </div>
+        <div class="card-body">
+          {% if evidence.exif %}
+            <ul class="kv-list">
+              {% for k, v in evidence.exif.items() %}
+                <li><strong>{{ k }}:</strong> {{ v }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted mb-0">
+              No EXIF metadata (not an image or EXIF empty).
+            </p>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
-    <!-- psscan -->
-    <div class="tab-pane fade" id="psscan">
-      <p>Total processes: {{ psscan_rows|length }}</p>
-      <table class="table table-sm table-striped">
-        <thead>
-          <tr>
-            <th>PID</th><th>PPID</th><th>Image</th>
-            <th>Threads</th><th>Handles</th>
-            <th>SessionId</th><th>CreateTime</th><th>ExitTime</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in psscan_rows %}
-          <tr>
-            <td>{{ row.PID }}</td>
-            <td>{{ row.PPID }}</td>
-            <td>{{ row.ImageFileName }}</td>
-            <td>{{ row.Threads }}</td>
-            <td>{{ row.Handles }}</td>
-            <td>{{ row.SessionId }}</td>
-            <td>{{ row.CreateTime }}</td>
-            <td>{{ row.ExitTime }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <!-- VirusTotal -->
+    <div class="col-lg-6">
+      <div class="card card-shadow h-100">
+        <div class="card-header bg-light">
+          <span class="section-title">VirusTotal</span>
+        </div>
+        <div class="card-body">
+          {% if evidence.vt %}
+            <ul class="kv-list">
+              <li><strong>Malicious:</strong> {{ evidence.vt.malicious or 0 }}</li>
+              <li><strong>Suspicious:</strong> {{ evidence.vt.suspicious or 0 }}</li>
+              <li><strong>Harmless:</strong> {{ evidence.vt.harmless or 0 }}</li>
+              <li><strong>Undetected:</strong> {{ evidence.vt.undetected or 0 }}</li>
+              {% if evidence.vt.vt_link %}
+                <li class="mt-2">
+                  <a href="{{ evidence.vt.vt_link }}" target="_blank" class="link-primary">
+                    Open in VirusTotal
+                  </a>
+                </li>
+              {% endif %}
+            </ul>
+          {% else %}
+            <p class="text-muted mb-0">
+              No VirusTotal report (either VT is disabled or hash not found).
+            </p>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
-    <!-- netscan -->
-    <div class="tab-pane fade" id="netscan">
-      <p>Total connections: {{ netscan_rows|length }}</p>
-      <table class="table table-sm table-striped">
-        <thead>
-          <tr>
-            <th>Proto</th><th>Local</th><th>Foreign</th>
-            <th>State</th><th>PID</th><th>Owner</th><th>Created</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in netscan_rows %}
-          <tr>
-            <td>{{ row.Proto }}</td>
-            <td>{{ row.LocalAddr }}:{{ row.LocalPort }}</td>
-            <td>{{ row.ForeignAddr }}:{{ row.ForeignPort }}</td>
-            <td>{{ row.State }}</td>
-            <td>{{ row.PID }}</td>
-            <td>{{ row.Owner }}</td>
-            <td>{{ row.Created }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+  </div>
 
-    <!-- malfind -->
-    <div class="tab-pane fade" id="malfind">
-      <h4>Malicious memory regions</h4>
-      {% if malfind_rows %}
-      <table class="table table-sm table-bordered">
-        <thead>
-          <tr><th>Process</th><th>PID</th><th>VAD</th><th>Hex dump</th></tr>
-        </thead>
-        <tbody>
-          {% for row in malfind_rows %}
-          <tr>
-            <td>{{ row.process }}</td>
-            <td>{{ row.pid }}</td>
-            <td>{{ row.vad }}</td>
-            <td><pre>{{ row.hex_dump }}</pre></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-        <p>No malfind output</p>
-      {% endif %}
+  <!-- Volatility -->
+  <div class="card card-shadow">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <span class="section-title mb-0">Volatility analysis</span>
     </div>
+    <div class="card-body">
 
-    <!-- cmdline -->
-    <div class="tab-pane fade" id="cmdline">
-      <h4>Command lines</h4>
-      {% if cmdline_rows %}
-      <pre>
+      {% if evidence.volatility %}
+
+        <!-- Tabs -->
+        <ul class="nav nav-tabs">
+          <li class="nav-item">
+            <a class="nav-link active" href="#pslist" data-bs-toggle="tab">pslist</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#psscan" data-bs-toggle="tab">psscan</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#netscan" data-bs-toggle="tab">netscan</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#malfind" data-bs-toggle="tab">malfind</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#cmdline" data-bs-toggle="tab">cmdline</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#dlllist" data-bs-toggle="tab">dlllist</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#raw" data-bs-toggle="tab">Raw JSON</a>
+          </li>
+        </ul>
+
+        <!-- Tab content -->
+        <div class="tab-content mt-3">
+
+          <!-- pslist -->
+          <div class="tab-pane fade show active" id="pslist">
+            <p class="text-muted">Total processes: {{ pslist_rows|length }}</p>
+            <div class="scroll-x">
+              <table class="table table-sm table-striped vol-table">
+                <thead>
+                  <tr>
+                    <th>PID</th><th>PPID</th><th>Image</th>
+                    <th>Threads</th><th>Handles</th>
+                    <th>SessionId</th><th>CreateTime</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in pslist_rows %}
+                  <tr>
+                    <td>{{ row.PID }}</td>
+                    <td>{{ row.PPID }}</td>
+                    <td>{{ row.ImageFileName }}</td>
+                    <td>{{ row.Threads }}</td>
+                    <td>{{ row.Handles }}</td>
+                    <td>{{ row.SessionId }}</td>
+                    <td>{{ row.CreateTime }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- psscan -->
+          <div class="tab-pane fade" id="psscan">
+            <p class="text-muted">Total processes: {{ psscan_rows|length }}</p>
+            <div class="scroll-x">
+              <table class="table table-sm table-striped vol-table">
+                <thead>
+                  <tr>
+                    <th>PID</th><th>PPID</th><th>Image</th>
+                    <th>Threads</th><th>Handles</th>
+                    <th>SessionId</th><th>CreateTime</th><th>ExitTime</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in psscan_rows %}
+                  <tr>
+                    <td>{{ row.PID }}</td>
+                    <td>{{ row.PPID }}</td>
+                    <td>{{ row.ImageFileName }}</td>
+                    <td>{{ row.Threads }}</td>
+                    <td>{{ row.Handles }}</td>
+                    <td>{{ row.SessionId }}</td>
+                    <td>{{ row.CreateTime }}</td>
+                    <td>{{ row.ExitTime }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- netscan -->
+          <div class="tab-pane fade" id="netscan">
+            <p class="text-muted">Total connections: {{ netscan_rows|length }}</p>
+            <div class="scroll-x">
+              <table class="table table-sm table-striped vol-table">
+                <thead>
+                  <tr>
+                    <th>Proto</th><th>Local</th><th>Foreign</th>
+                    <th>State</th><th>PID</th><th>Owner</th><th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in netscan_rows %}
+                  <tr>
+                    <td>{{ row.Proto }}</td>
+                    <td>{{ row.LocalAddr }}:{{ row.LocalPort }}</td>
+                    <td>{{ row.ForeignAddr }}:{{ row.ForeignPort }}</td>
+                    <td>{{ row.State }}</td>
+                    <td>{{ row.PID }}</td>
+                    <td>{{ row.Owner }}</td>
+                    <td>{{ row.Created }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- malfind -->
+          <div class="tab-pane fade" id="malfind">
+            <h5 class="mb-3">Malicious memory regions</h5>
+            {% if malfind_rows %}
+              <div class="scroll-x">
+                <table class="table table-sm table-bordered vol-table">
+                  <thead>
+                    <tr><th>Process</th><th>PID</th><th>VAD</th><th>Hex dump</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for row in malfind_rows %}
+                    <tr>
+                      <td>{{ row.process }}</td>
+                      <td>{{ row.pid }}</td>
+                      <td>{{ row.vad }}</td>
+                      <td><pre class="mb-0">{{ row.hex_dump }}</pre></td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="text-muted">No malfind output</p>
+            {% endif %}
+          </div>
+
+          <!-- cmdline -->
+          <div class="tab-pane fade" id="cmdline">
+            <h5 class="mb-3">Command lines</h5>
+            {% if cmdline_rows %}
+              <pre>
 {% for row in cmdline_rows %}
 {{ row }}
 {% endfor %}
-      </pre>
+              </pre>
+            {% else %}
+              <p class="text-muted">No cmdline output</p>
+            {% endif %}
+          </div>
+
+          <!-- dlllist -->
+          <div class="tab-pane fade" id="dlllist">
+            <h5 class="mb-3">Loaded DLLs</h5>
+            {% if dlllist_rows %}
+              <div class="scroll-x">
+                <table class="table table-sm table-bordered vol-table">
+                  <thead>
+                    <tr>
+                      <th>PID</th>
+                      <th>Process</th>
+                      <th>DLL Name</th>
+                      <th>Path</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in dlllist_rows %}
+                      <tr>
+                        <td>{{ row.pid }}</td>
+                        <td>{{ row.process }}</td>
+                        <td>{{ row.name }}</td>
+                        <td><code>{{ row.path }}</code></td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="text-muted">No dlllist output</p>
+            {% endif %}
+          </div>
+
+          <!-- Raw JSON -->
+          <div class="tab-pane fade" id="raw">
+            <pre>{{ evidence.volatility | tojson(indent=2) }}</pre>
+          </div>
+
+        </div>
+
       {% else %}
-        <p>No cmdline output</p>
+        <p class="text-muted mb-0">No Volatility analysis stored.</p>
       {% endif %}
+
     </div>
-
-    <!-- dlllist -->
-    <div class="tab-pane fade" id="dlllist">
-  <h4>Loaded DLLs</h4>
-  {% if dlllist_rows %}
-    <table class="table table-sm table-bordered">
-      <thead>
-        <tr>
-          <th>PID</th>
-          <th>Process</th>
-          <th>DLL Name</th>
-          <th>Path</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in dlllist_rows %}
-          <tr>
-            <td>{{ row.pid }}</td>
-            <td>{{ row.process }}</td>
-            <td>{{ row.name }}</td>
-            <td><code>{{ row.path }}</code></td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No dlllist output</p>
-  {% endif %}
-</div>
-
-
-    <!-- Raw JSON -->
-    <div class="tab-pane fade" id="raw">
-      <pre>{{ evidence.volatility | tojson(indent=2) }}</pre>
-    </div>
-
   </div>
-{% else %}
-  <p class="text-muted">No Volatility analysis stored.</p>
-{% endif %}
+
+</div>
 
 {% endblock %}

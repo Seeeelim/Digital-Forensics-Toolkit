@@ -1,69 +1,101 @@
 {% extends "layout.html" %}
 {% block content %}
 
-<h2>Upload new evidence</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">Digital Forensics Toolkit</h1>
+    <p class="text-muted mb-0">
+      Upload evidence files, then review automatic hashing &amp; Volatility / VirusTotal analysis.
+    </p>
+  </div>
+  <span class="badge bg-secondary-subtle text-secondary">
+    Total evidence: {{ items|length }}
+  </span>
+</div>
 
-<form id="upload-form" class="mb-4">
-  <input type="file" id="file-input" required />
-  <button type="submit">Upload & Analyze</button>
-</form>
+<!-- Upload card -->
+<div class="card mb-4 shadow-sm">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Upload new evidence</h2>
+    <form id="upload-form" class="row g-2 align-items-center">
+      <div class="col-md-6">
+        <input
+          type="file"
+          id="file-input"
+          class="form-control"
+          required
+        />
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">
+          Upload &amp; Analyze
+        </button>
+      </div>
+      <div class="col-12 mt-2">
+        <div id="upload-status" class="small text-muted"></div>
+      </div>
+    </form>
+  </div>
+</div>
 
-<div id="upload-status" class="mb-4"></div>
+<!-- Timeline / table -->
+<h2 class="h5 mb-3">Timeline of uploads (latest first)</h2>
 
-<hr>
-
-<h2>Timeline of uploads (latest first)</h2>
-
-<table class="table table-sm table-hover align-middle mt-3">
-  <thead>
-    <tr>
-      <th>When (processed_at)</th>
-      <th>Object</th>
-      <th>MIME</th>
-      <th>Size (bytes)</th>
-      <th>VT malicious</th>
-      <th>VT suspicious</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for item in items %}
-    <tr>
-      <td>{{ item.processed_at }}</td>
-      <td>
-        <a href="{{ url_for('evidence_detail', doc_id=item.id) }}">
-          {{ item.object_name }}
-        </a>
-      </td>
-      <td>{{ item.mime_type }}</td>
-      <td>{{ item.size_bytes }}</td>
-      <td>
-        {% if item.vt %}
-          {{ item.vt.malicious or 0 }}
-        {% else %}
-          –
-        {% endif %}
-      </td>
-      <td>
-        {% if item.vt %}
-          {{ item.vt.suspicious or 0 }}
-        {% else %}
-          –
-        {% endif %}
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-
-{% if not items %}
-  <p class="text-muted mt-3">
-    No evidence yet. Upload files into the <code>uploads/</code> folder of your bucket to see them here.
+{% if items %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">Processed at</th>
+          <th scope="col">Object</th>
+          <th scope="col">MIME</th>
+          <th scope="col">Size (bytes)</th>
+          <th scope="col">VT malicious</th>
+          <th scope="col">VT suspicious</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in items %}
+        {% set vt = item.vt or {} %}
+        {% set mal = (vt.malicious | default(0)) | int %}
+        {% set susp = (vt.suspicious | default(0)) | int %}
+        <tr>
+          <td class="text-nowrap">
+            {{ item.processed_at }}
+          </td>
+          <td>
+            <a href="{{ url_for('evidence_detail', doc_id=item.id) }}" class="link-primary text-decoration-none">
+              {{ item.object_name }}
+            </a>
+          </td>
+          <td><span class="badge text-bg-light">{{ item.mime_type or 'n/a' }}</span></td>
+          <td class="text-end">{{ item.size_bytes }}</td>
+          <td>
+            <span class="badge {{ 'bg-danger' if mal > 0 else 'bg-success-subtle text-success' }}">
+              {{ mal }}
+            </span>
+          </td>
+          <td>
+            <span class="badge {{ 'bg-warning-subtle text-warning' if susp > 0 else 'bg-success-subtle text-success' }}">
+              {{ susp }}
+            </span>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="text-muted">
+    No evidence yet. Use the form above to upload a file, or drop a file into the
+    <code>uploads/</code> folder of your bucket to see it here.
   </p>
 {% endif %}
 
+<!-- Upload JS -->
 <script>
-// Cloud Run URL of VOLATILITY ENGINE (the one with analyze.py)
-const UPLOAD_API_URL = "https://volatility-engine-1003013388283.us-central1.run.app/upload";
+// Backend route that handles the upload in your dfir-dashboard Flask app
+const UPLOAD_API_URL = "/upload";
 
 document.getElementById("upload-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -71,6 +103,8 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
   const statusDiv = document.getElementById("upload-status");
 
   if (!fileInput.files.length) {
+    statusDiv.classList.remove("text-success");
+    statusDiv.classList.add("text-danger");
     statusDiv.textContent = "Please select a file.";
     return;
   }
@@ -79,7 +113,9 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
   const formData = new FormData();
   formData.append("file", file);
 
-  statusDiv.textContent = "Uploading...";
+  statusDiv.classList.remove("text-danger", "text-success");
+  statusDiv.classList.add("text-muted");
+  statusDiv.textContent = "Uploading…";
 
   try {
     const res = await fetch(UPLOAD_API_URL, {
@@ -87,21 +123,37 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
       body: formData,
     });
 
-    const data = await res.json();
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_) {
+      // ignore JSON parse errors, will handle by status
+    }
+
     if (!res.ok) {
-      statusDiv.textContent = "Upload failed: " + (data.error || res.status);
+      statusDiv.classList.remove("text-muted");
+      statusDiv.classList.add("text-danger");
+      statusDiv.textContent =
+        "Upload failed: " + (data.error || res.status + " " + res.statusText);
       return;
     }
 
+    statusDiv.classList.remove("text-muted");
+    statusDiv.classList.add("text-success");
     statusDiv.textContent =
-      "Upload completed: " + data.object_name +
+      "Upload completed: " +
+      (data.object_name || file.name) +
       ". Analysis will run automatically. Refresh the page in a few seconds.";
+
+    // Optional: clear file input
+    fileInput.value = "";
 
   } catch (err) {
     console.error(err);
+    statusDiv.classList.remove("text-muted");
+    statusDiv.classList.add("text-danger");
     statusDiv.textContent = "Upload error: " + err;
   }
-
 });
 </script>
 

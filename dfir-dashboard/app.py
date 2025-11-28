@@ -7,6 +7,8 @@ import requests
 from types import SimpleNamespace
 import subprocess
 
+from werkzeug.utils import secure_filename
+
 app = Flask(__name__)
 
 # ---- GCP clients ----
@@ -379,6 +381,37 @@ def vt_check(doc_id):
     ref.update({"vt": vt_result, "vt_checked_at": datetime.utcnow().isoformat() + "Z"})
 
     return redirect(url_for("evidence_detail", doc_id=doc_id))
+
+@app.post("/upload")
+def upload_evidence():
+    """
+    Upload a file from the dashboard to the evidence bucket.
+    Trigger dfir_ingest via the GCS finalize event.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    filename = secure_filename(file.filename)
+
+    try:
+        bucket = storage_client.bucket(EVIDENCE_BUCKET)
+        blob = bucket.blob(f"uploads/{filename}")
+        # le file object est déjà un stream, on peut l’envoyer direct
+        blob.upload_from_file(file)
+
+        gcs_path = f"gs://{EVIDENCE_BUCKET}/uploads/{filename}"
+        return jsonify({
+            "status": "uploaded",
+            "bucket": EVIDENCE_BUCKET,
+            "object_name": blob.name,
+            "gcs_path": gcs_path,
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
