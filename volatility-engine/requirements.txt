@@ -1,0 +1,5 @@
+Flask
+gunicorn
+google-cloud-storage
+google-cloud-core
+volatility3

@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local config / secrets
+.env
+*.json
+*.yaml
+*.yml
+
+# GCP service account keys (never commit those)
+*service-account*.json
+*.key.json
+
+# Memory dumps / evidence files
+uploads/
+evidence/
+*.raw
+*.mem
+*.vmem
+*.dump
+*.bin
+
+# Logs
+*.log

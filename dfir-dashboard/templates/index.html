@@ -1,0 +1,108 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<h2>Upload new evidence</h2>
+
+<form id="upload-form" class="mb-4">
+  <input type="file" id="file-input" required />
+  <button type="submit">Upload & Analyze</button>
+</form>
+
+<div id="upload-status" class="mb-4"></div>
+
+<hr>
+
+<h2>Timeline of uploads (latest first)</h2>
+
+<table class="table table-sm table-hover align-middle mt-3">
+  <thead>
+    <tr>
+      <th>When (processed_at)</th>
+      <th>Object</th>
+      <th>MIME</th>
+      <th>Size (bytes)</th>
+      <th>VT malicious</th>
+      <th>VT suspicious</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in items %}
+    <tr>
+      <td>{{ item.processed_at }}</td>
+      <td>
+        <a href="{{ url_for('evidence_detail', doc_id=item.id) }}">
+          {{ item.object_name }}
+        </a>
+      </td>
+      <td>{{ item.mime_type }}</td>
+      <td>{{ item.size_bytes }}</td>
+      <td>
+        {% if item.vt %}
+          {{ item.vt.malicious or 0 }}
+        {% else %}
+          –
+        {% endif %}
+      </td>
+      <td>
+        {% if item.vt %}
+          {{ item.vt.suspicious or 0 }}
+        {% else %}
+          –
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if not items %}
+  <p class="text-muted mt-3">
+    No evidence yet. Upload files into the <code>uploads/</code> folder of your bucket to see them here.
+  </p>
+{% endif %}
+
+<script>
+// Cloud Run URL of VOLATILITY ENGINE (the one with analyze.py)
+const UPLOAD_API_URL = "https://volatility-engine-1003013388283.us-central1.run.app/upload";
+
+document.getElementById("upload-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fileInput = document.getElementById("file-input");
+  const statusDiv = document.getElementById("upload-status");
+
+  if (!fileInput.files.length) {
+    statusDiv.textContent = "Please select a file.";
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const formData = new FormData();
+  formData.append("file", file);
+
+  statusDiv.textContent = "Uploading...";
+
+  try {
+    const res = await fetch(UPLOAD_API_URL, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      statusDiv.textContent = "Upload failed: " + (data.error || res.status);
+      return;
+    }
+
+    statusDiv.textContent =
+      "Upload completed: " + data.object_name +
+      ". Analysis will run automatically. Refresh the page in a few seconds.";
+
+  } catch (err) {
+    console.error(err);
+    statusDiv.textContent = "Upload error: " + err;
+  }
+
+});
+</script>
+
+{% endblock %}
