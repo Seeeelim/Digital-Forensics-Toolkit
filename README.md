@@ -10,11 +10,11 @@
 The platform uses four fully managed GCP services, forming an automated end-to-end analysis chain:
 
     ┌──────────────────────────────┐
-    │   User uploads evidence      │
+    │    User uploads evidence     │
     └───────────────┬──────────────┘
                     ▼
             Google Cloud Storage
-     (gs://dfir-evidence-digital-forensic-toolkit/uploads/)
+(gs://dfir-evidence-digital-forensic-toolkit/uploads/)
                     │ Event
                     ▼
          Cloud Function (dfir_ingest)
@@ -171,26 +171,26 @@ The platform uses four fully managed GCP services, forming an automated end-to-e
 
 **🤖 5. Automatic Verdict System**
 
-  Each evidence receives a score → classification:
-  
-  ▶ Threat (malicious)
-      HIGH VirusTotal detections
-      Suspicious malfind regions
-      Inconsistent psxview results
-      Suspicious DLLs or command lines
+    Each evidence receives a score → classification:
     
-  ▶ Suspicious
-      Some strange processes
-      Partial VT detections
-      Hidden connections/ports
-  
-  ▶ Benign
-      Clean VirusTotal
-      No anomalies across all plugins
-  
-  ▶ Unknown
-      Dump too large to hash
-      No VT available
+    ▶ Threat (malicious)
+        HIGH VirusTotal detections
+        Suspicious malfind regions
+        Inconsistent psxview results
+        Suspicious DLLs or command lines
+      
+    ▶ Suspicious
+        Some strange processes
+        Partial VT detections
+        Hidden connections/ports
+    
+    ▶ Benign
+        Clean VirusTotal
+        No anomalies across all plugins
+    
+    ▶ Unknown
+        Dump too large to hash
+        No VT available
 
 **🛠 6. Installation & Deployment**
 
@@ -261,4 +261,4 @@ The platform uses four fully managed GCP services, forming an automated end-to-e
 
 **👨‍💻 Author**
 
-  Selim Harzallah
+    Selim Harzallah
