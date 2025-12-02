@@ -1,158 +1,264 @@
-_**🕵️‍♂️ Digital Forensics Cloud Toolkit
-Automated Memory Forensics, Evidence Ingestion & Volatility 3 Analysis on Google Cloud**_
+**🕵️‍♂️ Digital Forensics Cloud Toolkit**
+**Automated Memory Forensics, Evidence Ingestion & Volatility 3 Analysis on Google Cloud**
 
-This project is a full cloud-native DFIR (Digital Forensics & Incident Response) pipeline, designed to ingest forensic evidence, process it automatically using serverless functions, and run Volatility 3 analysis on memory dumps through a containerized engine.
+  A full cloud-native DFIR (Digital Forensics & Incident Response) pipeline that automatically ingests forensic evidence, analyzes memory dumps using Volatility 3, integrates VirusTotal, and displays everything in a modern Cloud Run dashboard.
 
-It integrates four major Google Cloud services, interacting end-to-end:
+  Built entirely with Google Cloud serverless architecture.
 
-**⚡️ 1. Architecture Overview**
-**✔ Google Cloud Storage (GCS) — Evidence Storage**
+**🚀 1. Project Architecture**
 
-Users upload forensic files (memory dumps, RAM captures, images, documents, etc.) into a dedicated bucket:
+The platform uses four fully managed GCP services, forming an automated end-to-end analysis chain:
 
-gs://dfir-evidence-digital-forensic-toolkit/uploads/
+    ┌──────────────────────────────┐
+    │   User uploads evidence      │
+    └───────────────┬──────────────┘
+                    ▼
+            Google Cloud Storage
+     (gs://dfir-evidence-digital-forensic-toolkit/uploads/)
+                    │ Event
+                    ▼
+         Cloud Function (dfir_ingest)
+      • Metadata extraction
+      • Hashing
+      • EXIF extraction
+      • VirusTotal lookup
+      • Volatility 3 remote execution
+      • Store structured results → Firestore
+                    │
+                    ▼
+       Cloud Run (volatility-engine)
+          • Runs Volatility 3 plugins
+          • Returns structured JSON
+                    │
+                    ▼
+       Firestore Database (NoSQL)
+                    │
+                    ▼
+       Cloud Run Dashboard (Flask UI)
+      → View metadata, EXIF, hashes, VT results
+      → Upload evidence from UI
 
+  **⚡️ 2. Components Overview**
 
-This upload automatically triggers the next component.
+  _**✔ Google Cloud Storage — Evidence Bucket**_
 
-**✔ Google Cloud Functions (Gen2) — Evidence Processing & Orchestration**
+    All forensic files are uploaded to: gs://dfir-evidence-digital-forensic-toolkit/uploads/
 
-Function name: dfir_ingest
+    Supported formats : 
+    
+      - .raw, .mem, .dmp, .vmem (memory dumps)
+      - Images (jpg, png)
+      - Documents (pdf, txt)
+      - Misc binary files    
+      Uploading automatically triggers the Cloud Function.
 
-Triggered when a new file is uploaded to GCS.
+  _**✔ Cloud Functions (Gen2) — Evidence Processing**_
 
-The function performs:
+    Function name: dfir_ingest
+    
+    🔍 Responsibilities:
+    
+    Task	Description :
+      Metadata extraction	==> Size, MIME, timestamps
+      Hashing	==> SHA256 & MD5 (streaming for big files)
+      EXIF parsing	==> Extract GPS, camera info, timestamps
+      VirusTotal lookup	==> Uses secure API key stored in Secret Manager
+      Volatility 3 analysis	==> Only for memory dump formats
+      Evidence classification	==> benign / suspicious / malicious / unknown
+      Storage	==> Writes all results in Firestore
+    
+    🔧 Cloud Function Environment Variables:
+    
+      VOL_ENGINE_URL=https://volatility-engine-1003013388283.us-central1.run.app
+      VT_API_KEY=XXXXX
 
-📄 Metadata extraction (size, mime, timestamps)
+  _**✔ Cloud Run — Volatility 3 Engine**_
 
-🔐 SHA256 / MD5 hashing (unless file > 200MB)
+    A containerized microservice running:
+    
+      Python
+      Volatility 3 Framework
+      Custom plugin wrappers
+      JSON output formatting
+    
+    Runs these plugins:
+    
+      windows.pslist
+      windows.psscan
+      windows.netscan
+      windows.cmdline
+      windows.dlllist
+      windows.malfind
+      windows.psxview
+      windows.svcsan
+    
+    Accessible by Cloud Function only.
 
-🧪 VT (VirusTotal) lookup (optional)
+  _**✔ Cloud Run — DFIR Dashboard (Flask UI)**_
+  
+    A clean, modern web interface to explore evidence.
+    
+    Features:
+    
+      Upload evidence from browser
+      View file metadata (size, MIME, timestamps)
+      Hashes (MD5, SHA256)
+      EXIF metadata for images
+      VirusTotal results
+      Volatility 3 results (with tab navigation)
+      Raw JSON dump for exporting reports
+      Verdict automatic scoring system
 
-🧠 Volatility 3 analysis for memory dumps (pslist, psscan, netscan, dlllist, cmdline, malfind)
+  **🔐 3. Security Model — IAM & Zero Trust**
 
-📝 Storing results inside Firestore
+    This project follows strict least privilege design:
+    
+    Service Accounts & Permissions
+    
+      DFIR Cloud Functions SA : cf-dfir@digital-forensic-toolkit.iam.gserviceaccount.com
+    
+        Required roles:
+          Storage Object Viewer
+          Eventarc Event Receiver
+          Secret Manager Accessor
+          Datastore User
+      
+        Purpose: process evidence & write structured results.
+    
+      Volatility Engine (Cloud Run)
+      
+        Uses Cloud Run default SA with no access to GCS or Firestore.
+        It only receives requests from Cloud Function.
+        
+      Dashboard Service Account (Cloud Run)
+        digital-forensic-toolkit@appspot.gserviceaccount.com
+        
+        Roles:
+          Firestore Viewer
+        Purpose: read-only dashboard.
+        Cannot modify evidence or run analysis.
+    
+    🧿 Key Security Guarantees:
+    
+      - Evidence cannot be deleted or modified by dashboard
+      - VirusTotal API key stored in Secret Manager
+      - Memory dumps never handled by frontend
+      - Each service only accesses its own resources
+      → Browse Volatility reports
+  
+**🔬 4. Volatility 3 Analysis**
 
-The function calls the Volatility Engine using:
+  The engine runs multiple deep-memory forensics modules:
+  
+    ▶ pslist : Active processes (EPROCESS list)
+    
+    ▶ psscan : Terminated or hidden processes via raw pool scanning
+    
+    ▶ netscan : Open & closed TCP/UDP sockets
+    Shows: LocalAddr, RemoteAddr, PID, State
+    
+    ▶ malfind : Detects injected or hidden executable VAD regions
+    
+    ▶ cmdline : Shows command lines of every process
+    
+    ▶ dlllist : Lists DLLs loaded inside each process
+    
+    ▶ psxview : Cross-view consistency check → detects hidden rootkits
+    
+    ▶ svcsan : Enumerates Windows services found in memory
+  
+  Results stored as clean JSON and displayed in dashboard.
 
-VOL_ENGINE_URL=https://volatility-engine-1003013388283.us-central1.run.app
+**🤖 5. Automatic Verdict System**
 
-**✔ Cloud Run — Volatility Engine (Containerized)**
+  Each evidence receives a score → classification:
+  
+  ▶ Threat (malicious)
+      HIGH VirusTotal detections
+      Suspicious malfind regions
+      Inconsistent psxview results
+      Suspicious DLLs or command lines
+    
+  ▶ Suspicious
+      Some strange processes
+      Partial VT detections
+      Hidden connections/ports
+  
+  ▶ Benign
+      Clean VirusTotal
+      No anomalies across all plugins
+  
+  ▶ Unknown
+      Dump too large to hash
+      No VT available
 
-A container running:
+**🛠 6. Installation & Deployment**
 
-Python
+  Full reproduction commands:
+  
+    1️⃣ Clone the repository
+    git clone https://github.com/Seeeelim/Digital-Forensics-Toolkit.git
+    cd Digital-Forensics-Toolkit
+    
+    2️⃣ Deploy Cloud Function
+    gcloud functions deploy dfir_ingest \
+      --gen2 \
+      --region=us-central1 \
+      --runtime=python311 \
+      --source="." \
+      --entry-point=dfir_ingest \
+      --trigger-bucket=dfir-evidence-digital-forensic-toolkit \
+      --service-account=cf-dfir@digital-forensic-toolkit.iam.gserviceaccount.com \
+      --memory=1Gi \
+      --timeout=540s \
+      --set-env-vars=VOL_ENGINE_URL="https://volatility-engine-1003013388283.us-central1.run.app",VT_API_KEY="$VT_API_KEY"
+    
+    3️⃣ Deploy Volatility Engine (Cloud Run)
+    cd volatility_engine
+    gcloud run deploy volatility-engine \
+      --source . \
+      --region us-central1 \
+      --allow-unauthenticated
+    
+    4️⃣ Deploy Dashboard (Cloud Run)
+    cd dashboard
+    gcloud run deploy dfir-dashboard \
+      --source . \
+      --region us-central1 \
+      --allow-unauthenticated
+    
+    5️⃣ Upload Evidence Programmatically
+    gsutil cp dump.raw gs://dfir-evidence-digital-forensic-toolkit/uploads/dump.raw
 
-Volatility 3 framework
+**📉 7. Project Limitations**
 
-Parsers + custom JSON formatting
+  Even though it’s powerful, limits include:
+  
+    - No full event reconstruction / timeline graph
+    - Cannot extract browser history or registry
+    - Extremely large dumps skip hashing
+    - VirusTotal API key rate-limited
+    - Cannot identify which user performed actions
+    - Cloud Run timeout limits complex plugin execution
 
-It receives files from Cloud Functions and returns plugin outputs:
+**🎯 8. Why This Project Matters**
 
-windows.pslist
-windows.psscan
-windows.netscan
-windows.cmdline
-windows.dlllist
-windows.malfind
-Raw JSON output
+  This project demonstrates:
+  
+    - Digital forensics automation at cloud scale
+    - Integration of Volatility 3 into serverless cloud
+    - Real DFIR workflows (hashing, VT lookup, memory analysis)
+    - Secure pipeline using IAM, Eventarc, Secret Manager
+    - Professional dashboard for investigators
+    - Production-ready architecture
+  
+  Ideal for:
+  
+    - Cybersecurity portfolios
+    - Cloud engineering demonstration
+    - DFIR research
+    - Memory forensics training
 
-**✔ Cloud Run — DFIR Dashboard (Flask Web UI)**
+**👨‍💻 Author**
 
-A separate Cloud Run service providing a modern web interface:
-
-Upload evidence through the UI
-
-Browse all ingested files
-
-View metadata, hashes, EXIF
-
-Explore Volatility 3 results (pslist, psscan, netscan, etc.)
-
-View raw JSON for DFIR reporting
-
-URL example: https://dfir-dashboard-1003013388283.us-central1.run.app/
-
-**🔧 Installation & Deployment
-1️⃣ Clone the repository**
-git clone https://github.com/Seeeelim/Digital-Forensics-Toolkit.git
-cd Digital-Forensics-Toolkit
-
-**2️⃣ Deploy the GCS-triggered Cloud Function**
-gcloud functions deploy dfir_ingest \
-  --gen2 \
-  --region=us-central1 \
-  --runtime=python311 \
-  --source="." \
-  --entry-point=dfir_ingest \
-  --trigger-bucket=dfir-evidence-digital-forensic-toolkit \
-  --service-account=cf-dfir@digital-forensic-toolkit.iam.gserviceaccount.com \
-  --memory=1Gi \
-  --timeout=540s \
-  --set-env-vars=VOL_ENGINE_URL="https://volatility-engine-1003013388283.us-central1.run.app",VT_API_KEY="$VT_API_KEY"
-
-**3️⃣ Deploy the Volatility Engine (Cloud Run)**
-cd volatility_engine
-gcloud run deploy volatility-engine \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated
-
-URL given → assign to VOL_ENGINE_URL.
-
-**4️⃣ Deploy the DFIR Web Dashboard (Cloud Run)**
-cd dashboard
-gcloud run deploy dfir-dashboard \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated
-
-
-**5️⃣ Upload Evidence for Testing**
-gsutil cp dump.raw gs://dfir-evidence-digital-forensic-toolkit/uploads/dump.raw
-
-**🔍 Volatility 3 Reports Shown in the Dashboard**
-
-_▶ pslist_ --> Lists all active processes extracted from the EPROCESS list.
-
-_▶ psscan_ --> Recovers terminated or hidden processes by scanning memory for EPROCESS signatures.
-
-_▶ netscan_ --> Extracts active/closed TCP & UDP connections with:
-
-  LocalAddr
-
-  RemoteAddr
-
-  PID
-
-  State
-
-_▶ malfind_ --> Detects hidden or injected code pages.
-
-_▶ cmdline_ --> Shows the original process command-line strings.
-
-_▶ dlllist_ --> Lists DLLs loaded for each process.
-
-All results stored in Firestore and rendered in the dashboard.
-
-**🧬 Why This Project Matters**
-
-This project demonstrates:
-
-- Cloud-native DFIR architecture
-
-- Serverless automation
-
-- Memory forensics at scale
-
-- Zero-trust / least-privilege IAM design
-
-- Multi-service integration (4 GCP services)
-
-- Real-world Volatility 3 forensics pipeline
-
-This is ideal for cybersecurity portfolios, cloud security architecture, or DFIR automation demonstration.
-
-**👨‍💻 Project Authors**
-
-Selim Harzallah
+  Selim Harzallah
