@@ -7,17 +7,31 @@ import uuid
 app = Flask(__name__)
 storage_client = storage.Client()
 
+# Bucket that stores evidence (same as used by main pipeline)
 BUCKET_NAME = "dfir-evidence-digital-forensic-toolkit"
+
 
 @app.get("/")
 def health():
+    """
+    Simple health check endpoint to verify that the Volatility
+    engine service is running.
+    """
     return "Volatility Engine Running", 200
+
 
 @app.post("/analyze")
 def analyze():
     """
+    Main Volatility Engine endpoint.
+
     Expected JSON body:
     { "gcs_path": "gs://bucket/path/to/memdump.raw" }
+
+    Steps:
+    - Download the file from GCS to a temporary local file
+    - Run multiple Volatility plugins on it
+    - Truncate outputs and return them as JSON
     """
     data = request.get_json(silent=True) or {}
     gcs_path = data.get("gcs_path")
@@ -33,6 +47,7 @@ def analyze():
     blob = bucket.blob(blob_name)
 
     # ---- Save locally ----
+    # Use a temporary file to store the dump locally for Volatility
     with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as tmp:
         local_path = tmp.name
         blob.download_to_filename(local_path)
@@ -41,7 +56,7 @@ def analyze():
     analysis = {}
 
     try:
-        # helper pour éviter de répéter
+        # Helper closure to avoid repeating subprocess boilerplate
         def run_volatility(plugin):
             return subprocess.run(
                 ["vol", "-f", local_path, plugin],
@@ -80,7 +95,7 @@ def analyze():
         analysis["cmdline_stdout"] = cmdline.stdout[:4000]
         analysis["cmdline_stderr"] = cmdline.stderr[:1000]
 
-        # 4) dlllist
+        # 6) dlllist
         dlllist = run_volatility("windows.dlllist")
         analysis["dlllist_exit"] = dlllist.returncode
         analysis["dlllist_stdout"] = dlllist.stdout[:4000]
@@ -89,6 +104,7 @@ def analyze():
         analysis["status"] = "ok"
 
     except Exception as e:
+        # If any plugin or subprocess fails, return a structured error
         analysis = {
             "status": "exception",
             "error": str(e),
@@ -96,15 +112,20 @@ def analyze():
 
     return jsonify(analysis), 200
 
+
 @app.post("/upload")
 def upload():
+    """
+    Simple helper endpoint to upload a file directly to the evidence bucket
+    via the Volatility Engine service (mainly for testing).
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
     filename = file.filename
 
-    # Upload to GCS
+    # Upload to GCS under uploads/
     bucket = storage_client.bucket(BUCKET_NAME)
     blob = bucket.blob(f"uploads/{filename}")
     blob.upload_from_file(file)
@@ -116,5 +137,7 @@ def upload():
         "gcs_path": gcs_path
     })
 
+
 if __name__ == "__main__":
+    # Local development server for the Volatility engine
     app.run(host="0.0.0.0", port=8080)

@@ -15,7 +15,7 @@ app = Flask(__name__)
 db = firestore.Client()
 storage_client = storage.Client()
 
-# Change this if your bucket name is different
+# Evidence bucket name used by the dashboard to upload files
 EVIDENCE_BUCKET = "dfir-evidence-digital-forensic-toolkit"
 
 # Optional: VirusTotal API key (set as Cloud Run env var VT_API_KEY)
@@ -29,6 +29,8 @@ def parse_ps_table(stdout: str, header_prefix: str):
     Parse une table texte classique Volatility (pslist/psscan)
     en list[dict]. header_prefix = 'PID' pour pslist/psscan.
     """
+    # Generic parser for Volatility text tables like pslist/psscan
+    # Returns a list of dictionaries, each representing a row.
     if not stdout:
         return []
 
@@ -36,7 +38,7 @@ def parse_ps_table(stdout: str, header_prefix: str):
     rows = []
     header_idx = None
 
-    # trouver la ligne d'en-tête
+    # Find header line (usually starts with 'PID' for these plugins)
     for i, line in enumerate(lines):
         if line.strip().startswith(header_prefix):
             header_idx = i
@@ -45,12 +47,13 @@ def parse_ps_table(stdout: str, header_prefix: str):
     if header_idx is None:
         return []
 
+    # Split header columns and then each data row similarly
     headers = lines[header_idx].split()
     for line in lines[header_idx + 1:]:
         if not line.strip():
             continue
         parts = line.split()
-        # sécurité : ignorer les lignes bizarres
+        # Safety check: ignore malformed lines
         if len(parts) < len(headers):
             continue
         row = dict(zip(headers, parts))
@@ -63,6 +66,7 @@ def parse_netscan(stdout: str):
     """
     Parse netscan en list[dict].
     """
+    # Parse Volatility netscan output into a list of dict rows.
     if not stdout:
         return []
 
@@ -70,6 +74,7 @@ def parse_netscan(stdout: str):
     rows = []
     header_idx = None
 
+    # Find header line (usually starts with "Offset")
     for i, line in enumerate(lines):
         if line.strip().startswith("Offset"):
             header_idx = i
@@ -90,6 +95,7 @@ def parse_netscan(stdout: str):
 
     return rows
 
+
 def parse_malfind(text):
     """
     Parse le output de Volatility 3 malfind (table PID / Process / Start / End / Tag / Protection...)
@@ -99,13 +105,14 @@ def parse_malfind(text):
       - vad  (range mémoire + tag)
       - hex_dump (on ne la remplit pas pour l’instant)
     """
+    # Parse Volatility malfind output into a structured list of VAD regions.
     if not text:
         return []
 
     lines = text.splitlines()
     header_idx = None
 
-    # Chercher la ligne qui commence par 'PID'
+    # Find header line starting with 'PID'
     for i, line in enumerate(lines):
         if line.strip().startswith("PID"):
             header_idx = i
@@ -121,7 +128,7 @@ def parse_malfind(text):
             continue
 
         parts = line.split()
-        # On garde seulement les vraies lignes de table (qui commencent par un PID numérique)
+        # Keep only real table rows (start with numeric PID)
         if not parts[0].isdigit():
             continue
         if len(parts) < 6:
@@ -140,12 +147,17 @@ def parse_malfind(text):
             "process": process,
             "pid": pid,
             "vad": vad_str,
-            "hex_dump": "",  # tu pourras l'améliorer plus tard
+            "hex_dump": "",  # placeholder for future enhancement
         })
 
     return rows
 
+
 def parse_cmdline(text):
+    """
+    Parse windows.cmdline output: we just keep non-header non-empty lines
+    as raw strings for display.
+    """
     rows = []
     for line in text.splitlines():
         if not line.strip():
@@ -154,6 +166,7 @@ def parse_cmdline(text):
             continue
         rows.append(line.strip())
     return rows
+
 
 def parse_dlllist(text):
     """
@@ -164,12 +177,14 @@ def parse_dlllist(text):
       - name
       - path
     """
+    # Parse dlllist output to get the main DLL name and path by PID/process.
     if not text:
         return []
 
     lines = text.splitlines()
     header_idx = None
 
+    # Find 'PID' header line
     for i, line in enumerate(lines):
         if line.strip().startswith("PID"):
             header_idx = i
@@ -204,6 +219,7 @@ def parse_dlllist(text):
         })
 
     return rows
+
 
 def get_download_url(object_name: str, minutes: int = 60) -> str | None:
     """Generate a signed URL for an object (or None on error)."""
@@ -248,12 +264,12 @@ def vt_lookup(sha256: str) -> dict:
         return {"error": str(e)}
 
 
-# ---------- Routes ----------
+# ---------- Routes / JSON helpers ----------
 
 from types import SimpleNamespace
 
 def _clean(value):
-    """Convertit récursivement les SimpleNamespace et objets non-JSON."""
+    """Recursively convert SimpleNamespace and non-JSON-safe objects."""
     if isinstance(value, SimpleNamespace):
         return {k: _clean(v) for k, v in value.__dict__.items()}
     if isinstance(value, dict):
@@ -268,7 +284,12 @@ def _clean(value):
     except:
         return str(value)
 
+
 def _doc_to_item(doc):
+    """
+    Convert a Firestore document snapshot into a dict and attach its ID.
+    Also normalizes SimpleNamespace fields.
+    """
     data = doc.to_dict() or {}
     data["id"] = doc.id
     return _clean(data)
@@ -276,6 +297,10 @@ def _doc_to_item(doc):
 
 @app.route("/")
 def index():
+    """
+    Homepage: show a timeline of recently processed evidence files.
+    Sorted by processed_at DESC, limited to last 100 items.
+    """
     # Timeline: latest first
     docs = (
         db.collection("evidence")
@@ -289,6 +314,11 @@ def index():
 
 @app.route("/evidence/<doc_id>")
 def evidence_detail(doc_id):
+    """
+    Evidence detail page.
+    Fetches one Firestore document and parses Volatility outputs
+    into nicely structured tables for the template.
+    """
     doc_ref = db.collection("evidence").document(doc_id)
     snap = doc_ref.get()
     evidence = snap.to_dict()
@@ -296,10 +326,12 @@ def evidence_detail(doc_id):
 
     vol = evidence.get("volatility") or {}
 
+    # Parse process-related views
     pslist_rows = parse_ps_table(vol.get("pslist_stdout", ""), "PID")
     psscan_rows = parse_ps_table(vol.get("psscan_stdout", ""), "PID")
     netscan_rows = parse_netscan(vol.get("netscan_stdout", ""))
 
+    # Parse additional volatility plugins
     malfind_rows = parse_malfind(vol.get("malfind_stdout", ""))
     cmdline_rows = parse_cmdline(vol.get("cmdline_stdout", ""))
     dlllist_rows = parse_dlllist(vol.get("dlllist_stdout", ""))
@@ -325,6 +357,7 @@ def search():
     query = (request.args.get("q") or "").strip()
     field = None
 
+    # Determine which field to query based on length
     if len(query) == 32:
         field = "md5"
     elif len(query) == 64:
@@ -339,7 +372,9 @@ def search():
 
 
 if __name__ == "__main__":
+    # Local debug runner (not used on Cloud Run)
     app.run(host="0.0.0.0", port=8080, debug=True)
+
 
 @app.route("/evidence/<doc_id>/add_comment", methods=["POST"])
 def add_comment(doc_id):
@@ -350,6 +385,7 @@ def add_comment(doc_id):
         return redirect(url_for("evidence_detail", doc_id=doc_id))
 
     ref = db.collection("evidence").document(doc_id)
+    # Store comment as a subcollection on the evidence document
     ref.collection("comments").add(
         {
             "author": author,
@@ -364,6 +400,7 @@ def add_comment(doc_id):
 def vt_check(doc_id):
     """
     Call VirusTotal for this evidence's sha256 and store the result in Firestore.
+    Allows the analyst to refresh VT info from the UI.
     """
     ref = db.collection("evidence").document(doc_id)
     snap = ref.get()
@@ -373,20 +410,21 @@ def vt_check(doc_id):
     data = snap.to_dict()
     sha256 = data.get("sha256")
     if not sha256:
-        # Nothing to do
+        # Nothing to do if there is no hash
         return redirect(url_for("evidence_detail", doc_id=doc_id))
 
     vt_result = vt_lookup(sha256)
-    # Store under 'vt' field
+    # Store under 'vt' field plus a timestamp
     ref.update({"vt": vt_result, "vt_checked_at": datetime.utcnow().isoformat() + "Z"})
 
     return redirect(url_for("evidence_detail", doc_id=doc_id))
+
 
 @app.post("/upload")
 def upload_evidence():
     """
     Upload a file from the dashboard to the evidence bucket.
-    Trigger dfir_ingest via the GCS finalize event.
+    This will trigger dfir_ingest via the GCS finalize event.
     """
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
@@ -400,7 +438,7 @@ def upload_evidence():
     try:
         bucket = storage_client.bucket(EVIDENCE_BUCKET)
         blob = bucket.blob(f"uploads/{filename}")
-        # le file object est déjà un stream, on peut l’envoyer direct
+        # The file object is already a stream – upload directly from it
         blob.upload_from_file(file)
 
         gcs_path = f"gs://{EVIDENCE_BUCKET}/uploads/{filename}"
@@ -413,8 +451,16 @@ def upload_evidence():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    """
+    (Legacy / local-only endpoint)
+
+    Download a memory file from GCS and run Volatility3 directly
+    in this container for pslist/netscan/psscan. Results are returned
+    as raw text in a JSON object.
+    """
     data = request.json
     bucket = data["bucket"]
     filename = data["filename"]
@@ -443,5 +489,5 @@ def analyze():
 
 # Cloud Run entrypoint
 if __name__ == "__main__":
-    # For local testing only
+    # For local testing only – Cloud Run will ignore this when using gunicorn
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=True)
